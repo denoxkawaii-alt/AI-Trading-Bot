@@ -1,17 +1,33 @@
 # AI-Trading-Bot
 
-Indian NSE/BSE intraday paper-trading engine.
+Indian NSE intraday paper-trading/research engine.
 
-**Rules:** ₹10,000 demo capital, ₹150 max planned risk/trade, max 2 trades/day,
-30-minute cooldown parameter, no duplicate position, minimum RR 1:2.5.
+Current stack:
+- Layer 1: India VIX maximum 22 and Nifty trend safety filter.
+- Layer 2: Nifty EMA20/EMA50 trend engine.
+- Layer 3: 15-minute ORB + 1.5x volume spike.
+- Quant gate: ATR sizing, ₹150 maximum planned risk/trade, minimum RR 1:2.5, 1,000-path Monte Carlo filter.
+- Execution: simulated paper trader and optional Telegram alerts.
 
-**Layers:** Nifty/India VIX macro filter; liquidity sweep; 1D/15m/5m price action;
-2x volume breakout; bid/ask imbalance; ATR sizing; 1,000-path Monte Carlo
-confidence gate; Telegram alerts.
+Layer 2:
+Close > EMA50 and EMA20 > EMA50 = BULLISH.
+Close < EMA50 and EMA20 < EMA50 = BEARISH.
+Otherwise = NEUTRAL.
 
-The 85% Monte Carlo value is a filter derived from return-resampling assumptions,
-not a guaranteed win probability. Real NSE/BSE and Level-2 data require a suitable
-licensed provider adapter. This repository does not place live orders.
+Layer 3:
+First 15-minute candle defines the opening range.
+Latest close must be above opening-range high.
+Latest volume must exceed 1.5x the previous 10 candles average.
+ORB stop is the breakout candle low, with opening-range low as fallback.
+ORB target is minimum 1:1.5. The quant layer can require the stricter configured 1:2.5 RR.
 
-Install: `pip install -r requirements.txt`; then provide normalized CSV demo data
-or implement MarketDataProvider for your chosen data source.
+Safety:
+This repository is paper trading only and does not place live orders. Yahoo Finance is not a broker-grade execution feed. Monte Carlo probability is a model filter, not a guaranteed win probability.
+
+Production work still required:
+licensed/appropriate market data, exchange calendar/session validation, persistent cooldown/day state, complete tests, monitoring, and broker execution controls.
+
+Install:
+pip install -r requirements.txt
+
+Use run_once() with an NSE symbol list such as RELIANCE or TCS.
