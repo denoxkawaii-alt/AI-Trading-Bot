@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 from config.settings import SETTINGS
 from config.stock_universe import fetch_nse_universe
 from core.macro_filter import MacroFilter
+from core.ai_engine import AITradingEngine
+from api.health_server import start_health_server
 from core.order_flow import OrderFlowEngine
 from core.price_action import PriceActionEngine
 from core.quant_engine import QuantEngine
@@ -88,6 +90,7 @@ def run_once(symbols: list[str], provider: Optional[NSEDataProvider] = None,
         return {**result, "status": "BLOCKED", "layer": 2, "reason": macro_reason, "trend": trend}
     price = PriceActionEngine(volume_lookback=10, volume_multiplier=1.5, min_risk_reward=SETTINGS.MIN_RR)
     flow = OrderFlowEngine(vwap_confirmation=True, volume_multiplier=1.2, min_avg_volume=1000.0)
+    ai = AITradingEngine(SETTINGS.AI_MIN_CONFIDENCE)
     quant = QuantEngine(default_simulations=SETTINGS.MONTE_CARLO_RUNS, default_horizon=SETTINGS.MC_HORIZON,
                         default_min_probability=SETTINGS.MIN_MC_PROBABILITY)
     opened = 0
@@ -107,6 +110,14 @@ def run_once(symbols: list[str], provider: Optional[NSEDataProvider] = None,
         flow_ok, flow_reason = flow.validate_order_flow(data, "BUY", 10)
         if not flow_ok:
             logger.info("%s rejected by Layer 4: %s", symbol, flow_reason)
+            continue
+        try:
+            vwap_for_ai = float(flow.calculate_vwap(data)["VWAP"].iloc[-1])
+        except Exception:
+            vwap_for_ai = None
+        ai_decision = ai.evaluate_buy(data, vwap_for_ai)
+        if SETTINGS.AI_ENABLED and ai_decision.signal != "BUY":
+            logger.info("%s rejected by AI layer: %.1f%% - %s", symbol, ai_decision.confidence * 100, ai_decision.reason)
             continue
         mc_ok, win_rate, quant_reason = quant.evaluate_orb_trade_plan(
             signal.entry, signal.stop_loss, signal.target, data,
