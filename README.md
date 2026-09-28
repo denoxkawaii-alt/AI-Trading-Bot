@@ -13,7 +13,7 @@ Indian NSE intraday paper-trading/research engine.
 
 ## Autonomous engine
 
-main.py stays alive continuously, operates on the NSE market window **09:15–15:30 IST**, monitors active paper positions at the start of every cycle, sends exit alerts, refreshes the dynamic NSE universe, and scans eligible symbols.
+main.py operates on the NSE market window **09:15–15:30 IST** and is scheduled on Railway to start at **09:00 IST**. At or after **16:00 IST**, the worker exits so the next scheduled session can start the following day. It monitors active paper positions, sends exit alerts, refreshes the dynamic NSE universe, and scans eligible symbols.
 
 The dynamic universe starts from NSE's equity master list, keeps regular EQ series, then applies the configured minimum price (**₹10**) and average daily volume (**100,000 shares**) filters using recent daily research quotes. If the dynamic universe cannot be built, the engine falls back to the Nifty 50 list.
 
