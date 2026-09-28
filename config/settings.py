@@ -22,5 +22,6 @@ class Settings:
     AI_ENABLED: bool = os.getenv("AI_ENABLED", "false").strip().lower() in {"1","true","yes","on"}
     AI_MIN_CONFIDENCE: float = float(os.getenv("AI_MIN_CONFIDENCE", "0.65"))
     HEALTH_PORT: int = int(os.getenv("PORT", "8080"))
+    DATA_DIR: str = os.getenv("DATA_DIR", "data")
 
 SETTINGS = Settings()
