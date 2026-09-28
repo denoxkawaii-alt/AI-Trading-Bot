@@ -31,11 +31,11 @@ def trade_alert(symbol: str, side: str, entry: float, stop_loss: float, target: 
     if volume is not None: lines.append(f"Breakout Volume: {volume:.0f}")
     if vsa_required_volume is not None: lines.append(f"VSA Required Volume: {vsa_required_volume:.0f}")
     lines += ["", "Mode: PAPER ONLY", "Broker order: NOT SENT"]
-    return send_alert("\\n".join(lines))
+    return send_alert("\n".join(lines))
 
 def exit_alert(symbol: str, side: str, quantity: int, entry: float, exit_price: float,
                pnl: float, reason: str) -> bool:
-    return send_alert("\\n".join([
+    return send_alert("\n".join([
         "📕 PAPER TRADE EXIT", "", f"Symbol: {symbol}", f"Side: {side}",
         f"Quantity: {quantity}", f"Entry: ₹{entry:.2f}", f"Exit: ₹{exit_price:.2f}",
         f"Reason: {reason}", f"P&L: ₹{pnl:.2f}", "", "Mode: PAPER ONLY", "Broker order: NOT SENT"
