@@ -169,6 +169,10 @@ def run_autonomous(symbols: Optional[list[str]] = None, provider: Optional[NSEDa
     cycles = 0
     while True:
         now = now_fn().astimezone(IST)
+        # Railway starts this worker at 09:00 IST; keep it alive only until 16:00 IST.
+        if now.time() >= dt_time(16, 0):
+            logger.info("Trading worker session ended at 16:00 IST. Exiting until next scheduled start.")
+            return
         if is_market_open(now):
             monitor_prices = _current_position_prices(provider, trader)
             closed = trader.check_and_update_positions(monitor_prices)
@@ -190,8 +194,7 @@ def run_autonomous(symbols: Optional[list[str]] = None, provider: Optional[NSEDa
                 return
             sleep_fn(max(1, cycle_seconds))
         else:
-            # Keep the worker alive 24/7 outside market hours; never exit just because NSE is closed.
-            logger.info("NSE market closed (%s IST). Worker is alive; next check in 30s.", now.strftime("%Y-%m-%d %H:%M:%S"))
+            logger.info("NSE market closed (%s IST). Worker is alive until 16:00 IST; next check in 30s.", now.strftime("%Y-%m-%d %H:%M:%S"))
             if max_cycles is not None and cycles >= max_cycles:
                 return
             sleep_fn(30)
