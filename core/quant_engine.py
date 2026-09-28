@@ -33,7 +33,7 @@ class QuantEngine:
         mean_ret, std_ret = float(returns.mean()), float(returns.std())
         if not np.isfinite(std_ret) or std_ret <= 0:
             return False, 0.0, "Return volatility is zero or invalid."
-        rng = np.random.default_rng(42)
+        rng = np.random.default_rng()
         simulated = np.clip(rng.normal(mean_ret, std_ret, (simulations, horizon)), -0.999, None)
         paths = entry * np.cumprod(1.0 + simulated, axis=1)
         wins = 0
