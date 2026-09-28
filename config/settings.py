@@ -19,5 +19,8 @@ class Settings:
     MC_HORIZON: int = int(os.getenv("MC_HORIZON", "10"))
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
+    AI_ENABLED: bool = os.getenv("AI_ENABLED", "false").strip().lower() in {"1","true","yes","on"}
+    AI_MIN_CONFIDENCE: float = float(os.getenv("AI_MIN_CONFIDENCE", "0.65"))
+    HEALTH_PORT: int = int(os.getenv("PORT", "8080"))
 
 SETTINGS = Settings()
