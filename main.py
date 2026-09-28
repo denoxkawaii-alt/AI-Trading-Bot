@@ -2,6 +2,7 @@ import logging
 import time
 from datetime import datetime, time as dt_time, timedelta
 from typing import Callable, Optional
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from config.settings import SETTINGS
@@ -61,9 +62,18 @@ def _current_position_prices(provider: NSEDataProvider, trader: PaperTrader) -> 
 
 
 def _new_trader() -> PaperTrader:
-    return PaperTrader(capital=SETTINGS.DEMO_CAPITAL, max_risk_per_trade=SETTINGS.MAX_RISK_PER_TRADE,
-                        max_daily_trades=SETTINGS.MAX_TRADES_PER_DAY, cooldown_minutes=SETTINGS.COOLDOWN_MINUTES,
-                        min_rr=SETTINGS.MIN_RR)
+    data_dir = Path(SETTINGS.DATA_DIR)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Trading data directory: %s", data_dir.resolve())
+    return PaperTrader(
+        capital=SETTINGS.DEMO_CAPITAL,
+        max_risk_per_trade=SETTINGS.MAX_RISK_PER_TRADE,
+        max_daily_trades=SETTINGS.MAX_TRADES_PER_DAY,
+        cooldown_minutes=SETTINGS.COOLDOWN_MINUTES,
+        ledger_path=data_dir / "trades.csv",
+        state_path=data_dir / "trader_state.json",
+        min_rr=SETTINGS.MIN_RR,
+    )
 
 
 def run_once(symbols: list[str], provider: Optional[NSEDataProvider] = None,
@@ -171,7 +181,10 @@ def run_autonomous(symbols: Optional[list[str]] = None, provider: Optional[NSEDa
                 current_symbols = fetch_nse_universe()
                 last_universe_refresh = now
                 logger.info("Universe ready: %d symbols.", len(current_symbols))
-            run_once(current_symbols, provider=provider, trader=trader, now=now)
+            try:
+                run_once(current_symbols, provider=provider, trader=trader, now=now)
+            except Exception:
+                logger.exception("Autonomous trading cycle failed; continuing after cooldown.")
             cycles += 1
             if max_cycles is not None and cycles >= max_cycles:
                 return
@@ -184,4 +197,5 @@ def run_autonomous(symbols: Optional[list[str]] = None, provider: Optional[NSEDa
 
 if __name__ == "__main__":
     logger.info("Starting autonomous Layer 1 -> Layer 5 paper-trading engine...")
+    start_health_server(SETTINGS.HEALTH_PORT)
     run_autonomous()
