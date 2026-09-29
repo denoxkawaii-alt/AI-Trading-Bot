@@ -18,6 +18,7 @@ from data_provider import NSEDataProvider
 from execution.paper_trader import PaperTrader
 from execution.telegram_bot import TelegramCommandBot
 from execution.telegram_notifier import exit_alert, trade_alert
+from execution.email_notifier import exit_email, trade_email
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger(__name__)
@@ -148,10 +149,12 @@ def run_once(symbols: list[str], provider: Optional[NSEDataProvider] = None,
             latest_vwap = None
         hist = data["Volume"].iloc[:-1].tail(10)
         required = float(hist.mean()) * 1.2 if not hist.empty else None
-        trade_alert(symbol=symbol, side=pos.side, entry=pos.entry, stop_loss=pos.stop_loss, target=pos.target,
-                    quantity=pos.quantity, risk=pos.risk_per_share * pos.quantity,
-                    risk_reward=(pos.target-pos.entry)/(pos.entry-pos.stop_loss), mc_probability=win_rate,
-                    vwap=latest_vwap, volume=signal.latest_volume, vsa_required_volume=required)
+        alert_args = dict(symbol=symbol, side=pos.side, entry=pos.entry, stop_loss=pos.stop_loss, target=pos.target,
+                          quantity=pos.quantity, risk=pos.risk_per_share * pos.quantity,
+                          risk_reward=(pos.target-pos.entry)/(pos.entry-pos.stop_loss), mc_probability=win_rate,
+                          vwap=latest_vwap, volume=signal.latest_volume, vsa_required_volume=required)
+        trade_alert(**alert_args)
+        trade_email(**alert_args)
     live_prices = _current_position_prices(provider, trader) if trader.positions else {}
     return {**result, "status": "COMPLETED", "layer": 5, "trades_opened": opened,
             "equity": trader.get_equity(live_prices), "positions": list(trader.positions), "trend": trend,
@@ -178,8 +181,10 @@ def run_autonomous(symbols: Optional[list[str]] = None, provider: Optional[NSEDa
             monitor_prices = _current_position_prices(provider, trader)
             closed = trader.check_and_update_positions(monitor_prices)
             for trade in closed:
-                exit_alert(symbol=trade["symbol"], side=trade["side"], quantity=trade["quantity"],
-                           entry=trade["entry"], exit_price=trade["exit"], pnl=trade["pnl"], reason=trade["reason"])
+                exit_args = dict(symbol=trade["symbol"], side=trade["side"], quantity=trade["quantity"],
+                                 entry=trade["entry"], exit_price=trade["exit"], pnl=trade["pnl"], reason=trade["reason"])
+                exit_alert(**exit_args)
+                exit_email(**exit_args)
             refresh_due = (current_symbols is None or last_universe_refresh is None or
                            (now-last_universe_refresh).total_seconds() >= universe_refresh_minutes*60)
             if refresh_due:
