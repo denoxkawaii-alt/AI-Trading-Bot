@@ -124,7 +124,9 @@ class TelegramCommandBot:
 
     def _handle(self, chat_id: str, text: str) -> None:
         if str(chat_id) != self.allowed_chat_id:
-            logger.warning("Ignoring Telegram command from unauthorized chat %s.", chat_id)
+            logger.warning("Ignoring Telegram command from unauthorized chat %s (configured chat id: %s).", chat_id, self.allowed_chat_id)
+            # Send a diagnostic response so a wrong TELEGRAM_CHAT_ID is immediately visible.
+            send_message(self.token, chat_id, "⚠️ Telegram bot is running, but this chat is not authorized.\n\nChat ID: " + str(chat_id) + "\nConfigured chat ID: " + (self.allowed_chat_id or "(missing)") + "\n\nUpdate TELEGRAM_CHAT_ID in Railway to this Chat ID, then redeploy.")
             return
         command = (text or "").strip().split()[0].lower() if text else ""
         if "@" in command:
