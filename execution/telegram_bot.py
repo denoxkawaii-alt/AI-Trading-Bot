@@ -51,6 +51,11 @@ class TelegramCommandBot:
         if not self.token or not self.allowed_chat_id:
             logger.info("Telegram command bot disabled: credentials not configured.")
             return
+        # Polling and a Telegram webhook cannot be active at the same time. Clear any
+        # stale webhook so getUpdates can receive commands after a redeploy.
+        webhook = _call(self.token, "deleteWebhook", {"drop_pending_updates": False}, timeout=15)
+        if webhook is None:
+            logger.warning("Telegram webhook cleanup failed; polling may return 409 until it is cleared.")
         self._thread = threading.Thread(target=self._poll, name="telegram-command-bot", daemon=True)
         self._thread.start()
         logger.info("Telegram command bot started.")
