@@ -16,6 +16,7 @@ from core.quant_engine import QuantEngine
 from core.trend_engine import TrendEngine
 from data_provider import NSEDataProvider
 from execution.paper_trader import PaperTrader
+from execution.telegram_bot import TelegramCommandBot
 from execution.telegram_notifier import exit_alert, trade_alert
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -203,4 +204,7 @@ def run_autonomous(symbols: Optional[list[str]] = None, provider: Optional[NSEDa
 if __name__ == "__main__":
     logger.info("Starting autonomous Layer 1 -> Layer 5 paper-trading engine...")
     start_health_server(SETTINGS.HEALTH_PORT)
-    run_autonomous()
+    trader = _new_trader()
+    telegram_bot = TelegramCommandBot(trader, SETTINGS.DATA_DIR)
+    telegram_bot.start()
+    run_autonomous(trader=trader)
