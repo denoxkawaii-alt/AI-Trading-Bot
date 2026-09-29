@@ -37,7 +37,7 @@ def send_message(token: str, chat_id: str, text: str) -> bool:
 
 
 class TelegramCommandBot:
-    """Small dependency-free Telegram command poller for the paper-trading worker."""
+    """Dependency-free Telegram command poller for the paper-trading worker."""
 
     def __init__(self, trader, data_dir: str):
         self.trader = trader
@@ -48,23 +48,38 @@ class TelegramCommandBot:
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        if not self.token or not self.allowed_chat_id:
-            logger.info("Telegram command bot disabled: credentials not configured.")
+        # TELEGRAM_CHAT_ID is deliberately optional: when missing/wrong, the bot can
+        # reply with the actual incoming chat ID so configuration can be repaired.
+        if not self.token:
+            logger.error("Telegram command bot disabled: TELEGRAM_BOT_TOKEN is missing.")
             return
-        # Polling and a Telegram webhook cannot be active at the same time. Clear any
-        # stale webhook so getUpdates can receive commands after a redeploy.
+
+        me = _call(self.token, "getMe", {}, timeout=15)
+        if not me:
+            logger.error("Telegram bot authentication failed. Check TELEGRAM_BOT_TOKEN in Railway.")
+            return
+
+        username = (me.get("result") or {}).get("username", "(unknown)")
+        logger.info("Telegram bot authenticated as @%s.", username)
+
+        # Polling and a Telegram webhook cannot be active at the same time.
         webhook = _call(self.token, "deleteWebhook", {"drop_pending_updates": False}, timeout=15)
         if webhook is None:
-            logger.warning("Telegram webhook cleanup failed; polling may return 409 until it is cleared.")
+            logger.warning("Telegram webhook cleanup failed; polling will keep retrying.")
+
         self._thread = threading.Thread(target=self._poll, name="telegram-command-bot", daemon=True)
         self._thread.start()
-        logger.info("Telegram command bot started.")
+        logger.info(
+            "Telegram command bot started. Configured chat ID: %s",
+            self.allowed_chat_id or "(not configured; diagnostic mode)",
+        )
 
     def stop(self) -> None:
         self._stop.set()
 
     def _reply(self, chat_id: str, message: str) -> None:
-        send_message(self.token, chat_id, message)
+        if not send_message(self.token, chat_id, message):
+            logger.error("Telegram reply failed for chat %s.", chat_id)
 
     def _status(self) -> str:
         return (
@@ -123,23 +138,48 @@ class TelegramCommandBot:
         return "\n".join(lines)
 
     def _handle(self, chat_id: str, text: str) -> None:
-        if str(chat_id) != self.allowed_chat_id:
-            logger.warning("Ignoring Telegram command from unauthorized chat %s (configured chat id: %s).", chat_id, self.allowed_chat_id)
-            # Send a diagnostic response so a wrong TELEGRAM_CHAT_ID is immediately visible.
-            send_message(self.token, chat_id, "⚠️ Telegram bot is running, but this chat is not authorized.\n\nChat ID: " + str(chat_id) + "\nConfigured chat ID: " + (self.allowed_chat_id or "(missing)") + "\n\nUpdate TELEGRAM_CHAT_ID in Railway to this Chat ID, then redeploy.")
+        if self.allowed_chat_id and str(chat_id) != self.allowed_chat_id:
+            logger.warning(
+                "Ignoring Telegram command from unauthorized chat %s (configured chat id: %s).",
+                chat_id,
+                self.allowed_chat_id,
+            )
+            send_message(
+                self.token,
+                chat_id,
+                "⚠️ Telegram bot is running, but this chat is not authorized.\n\n"
+                f"Chat ID: {chat_id}\n"
+                f"Configured chat ID: {self.allowed_chat_id}\n\n"
+                "Update TELEGRAM_CHAT_ID in Railway to this Chat ID, then redeploy.",
+            )
             return
+
+        # If no TELEGRAM_CHAT_ID is configured, allow the first chat through so the
+        # owner can confirm connectivity and then lock the bot to that chat.
+        if not self.allowed_chat_id:
+            logger.warning("Telegram chat ID is not configured; accepting diagnostic chat %s.", chat_id)
+            self._reply(
+                chat_id,
+                "⚠️ TELEGRAM_CHAT_ID is not configured in Railway.\n\n"
+                f"Your Chat ID is: {chat_id}\n\n"
+                "Set this value as TELEGRAM_CHAT_ID and redeploy to lock the bot to your chat.",
+            )
+            return
+
         command = (text or "").strip().split()[0].lower() if text else ""
         if "@" in command:
             command = command.split("@", 1)[0]
+
         if command in {"/start", "/help"}:
-            self._reply(chat_id, (
+            self._reply(
+                chat_id,
                 "🤖 Kakashi AI Trading Bot\n\n"
                 "Bot is connected and running in PAPER mode.\n\n"
                 "/status — bot status\n"
                 "/portfolio — open paper positions\n"
                 "/trades — recent closed trades\n"
-                "/help — commands"
-            ))
+                "/help — commands",
+            )
         elif command == "/status":
             self._reply(chat_id, self._status())
         elif command == "/portfolio":
@@ -150,20 +190,21 @@ class TelegramCommandBot:
             self._reply(chat_id, "Unknown command. Send /help to see available commands.")
 
     def _poll(self) -> None:
-        # Discard commands sent while the service was offline; the user can send /start again.
-        initial = _call(self.token, "getUpdates", {"offset": -1, "timeout": 0, "allowed_updates": ["message"]}, timeout=10)
         offset = None
-        if initial and initial.get("result"):
-            offset = initial["result"][-1]["update_id"] + 1
-
         while not self._stop.is_set():
+            # Retry webhook cleanup periodically so a stale webhook cannot permanently
+            # block getUpdates after a redeploy.
+            _call(self.token, "deleteWebhook", {"drop_pending_updates": False}, timeout=15)
+
             payload = {"timeout": 20, "allowed_updates": ["message"]}
             if offset is not None:
                 payload["offset"] = offset
+
             data = _call(self.token, "getUpdates", payload, timeout=25)
             if not data:
-                time.sleep(2)
+                time.sleep(3)
                 continue
+
             for update in data.get("result", []):
                 offset = int(update["update_id"]) + 1
                 message = update.get("message") or {}
@@ -171,4 +212,7 @@ class TelegramCommandBot:
                 chat_id = str(chat.get("id", ""))
                 text = message.get("text", "")
                 if chat_id and text:
-                    self._handle(chat_id, text)
+                    try:
+                        self._handle(chat_id, text)
+                    except Exception:
+                        logger.exception("Telegram command handling failed for chat %s.", chat_id)
